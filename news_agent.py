@@ -1,24 +1,33 @@
 import streamlit as st
 from duckduckgo_search import DDGS
 from openai import OpenAI
-import os
 from dotenv import load_dotenv
 from datetime import datetime
+import os
 
 # Load environment variables
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Initialize OpenAI client using project-scoped API key
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Configure Streamlit
+# Streamlit page config
 st.set_page_config(page_title="AI News Processor", page_icon="📰")
 st.title("📰 News Inshorts Agent")
 
-# -------------------- OpenAI Wrapper ----------------------
+# -------------------- DuckDuckGo News Search ----------------------
+def search_news(topic):
+    with DDGS() as ddg:
+        results = ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=3)
+        if results:
+            return "\n\n".join([
+                f"Title: {r['title']}\nURL: {r['href']}\nSummary: {r['body']}"
+                for r in results
+            ])
+        return "No news found."
 
-def ask_openai(prompt, role_description, temperature=0.5, model="gpt-4"):
+# -------------------- Ask OpenAI ----------------------
+def ask_openai(prompt, role_description, model="gpt-4", temperature=0.5):
     messages = [
         {"role": "system", "content": role_description},
         {"role": "user", "content": prompt}
@@ -31,20 +40,7 @@ def ask_openai(prompt, role_description, temperature=0.5, model="gpt-4"):
     )
     return response.choices[0].message.content
 
-# -------------------- DuckDuckGo Search ----------------------
-
-def search_news(topic):
-    with DDGS() as ddg:
-        results = ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=3)
-        if results:
-            return "\n\n".join([
-                f"Title: {r['title']}\nURL: {r['href']}\nSummary: {r['body']}"
-                for r in results
-            ])
-        return "No news found."
-
-# -------------------- Main News Processing Pipeline ----------------------
-
+# -------------------- Full News Processing Pipeline ----------------------
 def process_news(topic):
     with st.status("Processing news...", expanded=True) as status:
         # Search
@@ -72,8 +68,8 @@ def process_news(topic):
         return raw_news, synthesized_news, final_summary
 
 # -------------------- Streamlit UI ----------------------
-
 topic = st.text_input("Enter news topic:", value="artificial intelligence")
+
 if st.button("Process News", type="primary"):
     if topic:
         try:
