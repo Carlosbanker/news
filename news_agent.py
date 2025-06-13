@@ -1,24 +1,29 @@
 import streamlit as st
 from duckduckgo_search import DDGS
-import openai
+from openai import OpenAI
 import os
 from dotenv import load_dotenv
 from datetime import datetime
 
+# Load environment variables
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Initialize OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Configure Streamlit
 st.set_page_config(page_title="AI News Processor", page_icon="📰")
 st.title("📰 News Inshorts Agent")
 
-# -------------------- OpenAI Wrappers ----------------------
+# -------------------- OpenAI Wrapper ----------------------
 
 def ask_openai(prompt, role_description, temperature=0.5, model="gpt-4"):
     messages = [
         {"role": "system", "content": role_description},
         {"role": "user", "content": prompt}
     ]
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
@@ -38,7 +43,7 @@ def search_news(topic):
             ])
         return "No news found."
 
-# -------------------- Main Pipeline ----------------------
+# -------------------- Main News Processing Pipeline ----------------------
 
 def process_news(topic):
     with st.status("Processing news...", expanded=True) as status:
