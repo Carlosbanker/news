@@ -27,10 +27,6 @@ st.markdown("""
             font-size: 1.1em;
             color: #666;
         }
-        .article-title {
-            font-size: 1.2em;
-            font-weight: 600;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -78,7 +74,7 @@ if st.button("🚀 Process News", type="primary"):
                         url = article['href']
                         body = article['body']
 
-                        st.markdown(f"**{i+1}. [{title}]({url})**")
+                        st.markdown(f"### {i+1}. [{title}]({url})")
                         st.caption(body)
 
                         try:
@@ -87,10 +83,11 @@ if st.button("🚀 Process News", type="primary"):
                         except Exception as e:
                             summary = f"Error generating summary: {str(e)}"
 
-                        with st.expander("📖 Read AI Summary"):
-                            st.markdown(summary)
-                        
+                        expander_label = "📖 Click to read AI-generated summary"
+                        st.expander(expander_label).markdown(summary)
+
                         st.markdown("---")
-                    status.update(label="✅ Done!", state="complete")
+
+                    status.update(label="✅ Done summarizing!", state="complete")
             except Exception as e:
                 st.error(f"❌ Error: {str(e)}")
