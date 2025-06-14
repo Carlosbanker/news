@@ -1,28 +1,37 @@
 import streamlit as st
 from duckduckgo_search import DDGS
-import openai
-import os
+from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
+import os
 
+# Load environment variables from .env
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Setup OpenAI
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 st.set_page_config(page_title="AI News Processor", page_icon="📰")
 st.title("📰 News Inshorts Agent")
 
-def ask_openai(prompt, role_description, temperature=0.5, model="gpt-3.5-turbo"):
+# ----------- Wrapper Function --------------
+
+def ask_openai(prompt, role_description, model="gpt-3.5-turbo", temperature=0.5):
     messages = [
         {"role": "system", "content": role_description},
         {"role": "user", "content": prompt}
     ]
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
-        max_tokens=1000,
+        max_tokens=1000
     )
     return response.choices[0].message.content
+
+# ----------- News Search --------------
 
 def search_news(topic):
     with DDGS() as ddg:
@@ -34,37 +43,45 @@ def search_news(topic):
             ])
         return "No news found."
 
+# ----------- News Processing Flow -------------
+
 def process_news(topic):
     with st.status("Processing news...", expanded=True) as status:
+        # Step 1: Search
         status.write("🔍 Searching for news...")
         raw_news = search_news(topic)
 
-        status.write("🔄 Synthesizing information...")
-        synth_prompt = f"Synthesize these news articles:\n\n{raw_news}"
+        # Step 2: Synthesize
+        status.write("🔄 Synthesizing articles...")
+        synth_prompt = f"Synthesize the following news articles:\n\n{raw_news}"
         synth_role = (
-            "You are a news synthesis expert. Your job is to combine multiple articles into a clear, "
-            "objective 2–3 paragraph synthesis. Be concise and focus on main themes."
+            "You are a news synthesis expert. Summarize the key points from multiple news sources "
+            "into 2–3 clear, objective paragraphs."
         )
-        synthesized_news = ask_openai(synth_prompt, synth_role)
+        synthesized = ask_openai(synth_prompt, synth_role)
 
-        status.write("📝 Creating summary...")
-        summary_prompt = f"Summarize this synthesis:\n\n{synthesized_news}"
+        # Step 3: Summarize
+        status.write("📝 Creating a summary...")
+        summary_prompt = f"Summarize this news synthesis:\n\n{synthesized}"
         summary_role = (
-            "You are a professional news summarizer in AP/Reuters style. Give a clear 1-paragraph summary "
-            "covering the what, who, why it matters, and what’s next. Be factual and brief."
+            "You are a professional news summarizer using AP/Reuters style. Write one short paragraph "
+            "explaining what happened, why it matters, and what’s next. Be concise, clear, and factual."
         )
-        final_summary = ask_openai(summary_prompt, summary_role)
+        summary = ask_openai(summary_prompt, summary_role)
 
-        return raw_news, synthesized_news, final_summary
+        return raw_news, synthesized, summary
 
-topic = st.text_input("Enter news topic:", value="artificial intelligence")
+# ----------- UI -------------
+
+topic = st.text_input("Enter news topic:", value="Artificial Intelligence")
+
 if st.button("Process News", type="primary"):
     if topic:
         try:
-            raw_news, synthesized_news, final_summary = process_news(topic)
+            raw, synth, summary = process_news(topic)
             st.header(f"📝 News Summary: {topic}")
-            st.markdown(final_summary)
+            st.markdown(summary)
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"❌ Error: {str(e)}")
     else:
-        st.error("Please enter a topic.")
+        st.warning("⚠️ Please enter a topic.")
