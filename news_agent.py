@@ -28,16 +28,13 @@ def summarize_with_hf_api(text):
     else:
         raise Exception(f"Hugging Face API Error: {response.status_code} - {response.text}")
 
-# News search
+# News search (10 articles)
 def search_news(topic):
     with DDGS() as ddg:
-        results = ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=3)
+        results = ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=10)
         if results:
-            return "\n\n".join([
-                f"Title: {r['title']}\nURL: {r['href']}\nSummary: {r['body']}"
-                for r in results
-            ])
-        return "No news found."
+            return results
+        return []
 
 # Streamlit UI
 topic = st.text_input("Enter news topic:", value="climate change")
@@ -47,13 +44,23 @@ if st.button("Process News", type="primary"):
         with st.status("Processing news...", expanded=True) as status:
             try:
                 status.write("🔍 Searching for news...")
-                raw_news = search_news(topic)
+                news_items = search_news(topic)
+                
+                if not news_items:
+                    st.warning("No news articles found.")
+                else:
+                    combined_text = ""
+                    for idx, item in enumerate(news_items):
+                        st.subheader(f"{idx+1}. {item['title']}")
+                        st.markdown(f"[Link]({item['href']})")
+                        st.markdown(f"**Summary:** {item['body']}")
+                        combined_text += item['body'] + "\n\n"
 
-                status.write("📝 Summarizing via Hugging Face API...")
-                summary = summarize_with_hf_api(raw_news)
+                    status.write("📝 Summarizing via Hugging Face API...")
+                    summary = summarize_with_hf_api(combined_text)
 
-                st.header("📝 Summary")
-                st.markdown(summary)
+                    st.header("📝 Final Summary")
+                    st.markdown(summary)
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     else:
