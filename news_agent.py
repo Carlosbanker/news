@@ -1,21 +1,29 @@
 import streamlit as st
 from duckduckgo_search import DDGS
-from openai import OpenAI
+import openai
+import os
 from dotenv import load_dotenv
 from datetime import datetime
-import os
 
-# Load environment variables
 load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Initialize OpenAI client using project-scoped API key
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Streamlit page config
 st.set_page_config(page_title="AI News Processor", page_icon="📰")
 st.title("📰 News Inshorts Agent")
 
-# -------------------- DuckDuckGo News Search ----------------------
+def ask_openai(prompt, role_description, temperature=0.5, model="gpt-3.5-turbo"):
+    messages = [
+        {"role": "system", "content": role_description},
+        {"role": "user", "content": prompt}
+    ]
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=1000,
+    )
+    return response.choices[0].message.content
+
 def search_news(topic):
     with DDGS() as ddg:
         results = ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=3)
@@ -26,28 +34,11 @@ def search_news(topic):
             ])
         return "No news found."
 
-# -------------------- Ask OpenAI ----------------------
-def ask_openai(prompt, role_description, model="gpt-4", temperature=0.5):
-    messages = [
-        {"role": "system", "content": role_description},
-        {"role": "user", "content": prompt}
-    ]
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=1000,
-    )
-    return response.choices[0].message.content
-
-# -------------------- Full News Processing Pipeline ----------------------
 def process_news(topic):
     with st.status("Processing news...", expanded=True) as status:
-        # Search
         status.write("🔍 Searching for news...")
         raw_news = search_news(topic)
 
-        # Synthesize
         status.write("🔄 Synthesizing information...")
         synth_prompt = f"Synthesize these news articles:\n\n{raw_news}"
         synth_role = (
@@ -56,7 +47,6 @@ def process_news(topic):
         )
         synthesized_news = ask_openai(synth_prompt, synth_role)
 
-        # Summarize
         status.write("📝 Creating summary...")
         summary_prompt = f"Summarize this synthesis:\n\n{synthesized_news}"
         summary_role = (
@@ -67,9 +57,7 @@ def process_news(topic):
 
         return raw_news, synthesized_news, final_summary
 
-# -------------------- Streamlit UI ----------------------
 topic = st.text_input("Enter news topic:", value="artificial intelligence")
-
 if st.button("Process News", type="primary"):
     if topic:
         try:
