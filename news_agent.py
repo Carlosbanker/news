@@ -5,46 +5,46 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 
-# Load API token
+# Load Hugging Face Token
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# Hugging Face setup
+# App and model config
 API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 
-# App config
 st.set_page_config(page_title="🗞️ News Look Up", page_icon="🔎", layout="wide")
 
-# Header
+# ---------- Styling ----------
 st.markdown("""
     <style>
         .main-title {
             font-size: 3em;
-            font-weight: 700;
-            color: #333333;
+            font-weight: bold;
+            color: #222;
         }
         .subtitle {
+            font-size: 1.1em;
+            color: #666;
+        }
+        .article-title {
             font-size: 1.2em;
-            color: #777777;
-            margin-bottom: 1em;
+            font-weight: 600;
         }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<div class='main-title'>🗞️ News Look Up</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Real-time news search & AI-powered intelligent summarization</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Real-time news search & detailed AI summarization</div>", unsafe_allow_html=True)
+st.divider()
 
-# Search bar
-topic = st.text_input("🔍 Enter a topic to look up news", value="AI regulation", placeholder="e.g. Bitcoin, War in Gaza, Climate Change...")
-
-# Hugging Face summarizer
+# ---------- Summarizer ----------
 def summarize_with_hf_api(text):
     payload = {
         "inputs": text,
         "parameters": {
-            "max_length": 400,
-            "min_length": 150,
+            "max_length": 500,
+            "min_length": 200,
             "do_sample": False,
         }
     }
@@ -54,37 +54,43 @@ def summarize_with_hf_api(text):
     else:
         raise Exception(f"Hugging Face API Error {response.status_code}: {response.text}")
 
-# DuckDuckGo search
+# ---------- News Search ----------
 def search_news(topic):
     with DDGS() as ddg:
-        results = ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=10)
-        return results if results else []
+        return ddg.text(f"{topic} news {datetime.now().strftime('%Y-%m')}", max_results=10)
 
-# Process
+# ---------- User Input ----------
+topic = st.text_input("🔍 Enter a news topic", value="climate change", placeholder="e.g. AI, elections, sports...")
+
 if st.button("🚀 Process News", type="primary"):
     if topic.strip() == "":
         st.warning("Please enter a topic.")
     else:
-        with st.status("🔎 Fetching and processing news...", expanded=True) as status:
+        with st.status("Fetching and summarizing articles...", expanded=True) as status:
             try:
                 news_results = search_news(topic)
                 if not news_results:
-                    st.warning("No news articles found.")
+                    st.warning("No news found.")
                 else:
-                    full_text = ""
-                    st.subheader("📰 Sources")
+                    st.subheader("📰 Top Articles")
                     for i, article in enumerate(news_results):
-                        with st.container():
-                            st.markdown(f"**{i+1}. [{article['title']}]({article['href']})**")
-                            st.caption(article['body'])
-                            full_text += article['body'] + "\n\n"
+                        title = article['title']
+                        url = article['href']
+                        body = article['body']
 
-                    status.write("✍️ Summarizing with Hugging Face...")
-                    summary = summarize_with_hf_api(full_text)
+                        st.markdown(f"**{i+1}. [{title}]({url})**")
+                        st.caption(body)
 
-                    st.divider()
-                    st.subheader("🧠 AI Summary")
-                    st.markdown(f"```{summary}```")
-                    st.success("✅ Done!")
+                        try:
+                            status.write(f"Summarizing article {i+1}...")
+                            summary = summarize_with_hf_api(body)
+                        except Exception as e:
+                            summary = f"Error generating summary: {str(e)}"
+
+                        with st.expander("📖 Read AI Summary"):
+                            st.markdown(summary)
+                        
+                        st.markdown("---")
+                    status.update(label="✅ Done!", state="complete")
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"❌ Error: {str(e)}")
