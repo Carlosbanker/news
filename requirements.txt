@@ -2,3 +2,4 @@ streamlit
 duckduckgo-search
 requests
 python-dotenv
+feedparser
