@@ -2,21 +2,24 @@ import streamlit as st
 from duckduckgo_search import DDGS
 import requests
 import feedparser
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 from dotenv import load_dotenv
 
-# Load API keys from .env
+# Load environment variables
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
 GNEWS_KEY = os.getenv("GNEWS_KEY")
 
 # Setup Streamlit UI
-st.set_page_config(page_title="📰 News Lookup", page_icon="🗞️")
+st.set_page_config(page_title="📰 News Lookup", page_icon="🗞️", layout="wide")
 st.title("🗞️ News Lookup")
-st.markdown("A free, multi-source AI-powered news summarizer. Get concise overviews from different reputable sources.")
+st.markdown("A multi-source AI-powered news summarizer with filtering and pagination.")
 
-# HuggingFace Summarizer
+# Setup columns
+col1, col2 = st.columns([3, 1])
+
+# Summarizer
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 HF_API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
 
@@ -27,31 +30,25 @@ def summarize(text):
         return res.json()[0]['summary_text']
     return f"❌ Error: {res.status_code}"
 
-# DuckDuckGo News
-def get_duckduckgo_news(topic):
-    with DDGS() as ddg:
-        results = ddg.text(f"{topic} news", max_results=5)
-        return [
-            {
-                "source": "DuckDuckGo",
-                "title": r["title"],
-                "url": r["href"],
-                "content": r["body"]
-            } for r in results
-        ] if results else []
-
-# RSS Feeds
+# Data sources
 RSS_FEEDS = [
     ("BBC", "http://feeds.bbci.co.uk/news/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/reuters/topNews"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
 ]
 
+AVAILABLE_SOURCES = ["DuckDuckGo", "BBC", "Reuters", "Al Jazeera"]
+
+def get_duckduckgo_news(topic):
+    with DDGS() as ddg:
+        results = ddg.text(f"{topic} news", max_results=20)
+        return [{"source": "DuckDuckGo", "title": r["title"], "url": r["href"], "content": r["body"]} for r in results]
+
 def get_rss_news():
     entries = []
     for name, url in RSS_FEEDS:
         feed = feedparser.parse(url)
-        for entry in feed.entries[:2]:  # limit per feed
+        for entry in feed.entries[:5]:
             entries.append({
                 "source": name,
                 "title": entry.title,
@@ -60,82 +57,57 @@ def get_rss_news():
             })
     return entries
 
-# GNews (Featured Section)
 def get_gnews_news(topic):
     if not GNEWS_KEY:
         return []
-
     url = "https://gnews.io/api/v4/search"
-    params = {
-        "q": topic,
-        "lang": "en",
-        "max": 5,
-        "token": GNEWS_KEY
-    }
-
+    params = {"q": topic, "lang": "en", "max": 5, "token": GNEWS_KEY}
     try:
         res = requests.get(url, params=params)
         res.raise_for_status()
         articles = res.json().get("articles", [])
-        return [
-            {
-                "source": a["source"]["name"],
-                "title": a["title"],
-                "url": a["url"],
-                "content": a.get("description") or a.get("content", "No description available.")
-            } for a in articles if a.get("title") and a.get("url")
-        ]
+        return [{"source": a["source"]["name"], "title": a["title"], "url": a["url"], "content": a.get("description") or a.get("content", "") } for a in articles if a.get("title") and a.get("url")]
     except Exception as e:
         st.warning(f"⚠️ GNews failed: {e}")
         return []
 
-# Topic Input
-topic = st.text_input("Enter a news topic:", value="climate change")
+# Input
+with col1:
+    topic = st.text_input("Enter a news topic:", value="climate change")
+    selected_sources = st.multiselect("Filter by source:", AVAILABLE_SOURCES, default=AVAILABLE_SOURCES)
+    if "news_index" not in st.session_state:
+        st.session_state.news_index = 0
+    if st.button("🔎 Look Up News"):
+        st.session_state.news_index = 0
+        general_news = get_duckduckgo_news(topic) + get_rss_news()
+        st.session_state.general_news = [n for n in general_news if n["source"] in selected_sources][:50]
+        st.session_state.featured_news = get_gnews_news(topic)
 
-# Session states
-if "news_index" not in st.session_state:
-    st.session_state.news_index = 0
-if "general_news" not in st.session_state:
-    st.session_state.general_news = []
-if "featured_news" not in st.session_state:
-    st.session_state.featured_news = []
-
-# Search Button
-if st.button("🔎 Look Up News"):
-    if topic.strip():
-        with st.status("Gathering and summarizing news...", expanded=True):
-            st.session_state.news_index = 0
-            st.session_state.general_news = get_duckduckgo_news(topic) + get_rss_news()
-            st.session_state.featured_news = get_gnews_news(topic)
-    else:
-        st.warning("Please enter a topic to search.")
-
-# Display Featured Section (GNews)
-if st.session_state.featured_news:
+# Right sidebar - Featured / Related
+with col2:
     st.subheader("🟨 Featured (GNews)")
-    for i, article in enumerate(st.session_state.featured_news):
-        with st.expander(f"{i+1}. {article['title']} [{article['source']}]"):
-            st.markdown(f"**URL:** [{article['url']}]({article['url']})")
-            st.markdown(f"**Original:** {article['content'][:500]}...")
-            st.markdown("**Summary:**")
-            st.markdown(summarize(article['content']))
+    if "featured_news" in st.session_state and st.session_state.featured_news:
+        for art in st.session_state.featured_news:
+            st.markdown(f"**[{art['title']}]({art['url']})**\n\n*{art['source']}*", unsafe_allow_html=True)
+    else:
+        st.info("No featured articles yet.")
 
-# Display General News with Pagination
-if st.session_state.general_news:
+# Display paginated general news
+if "general_news" in st.session_state and st.session_state.general_news:
     st.markdown("---")
-    st.subheader("🌍 General News")
-    total = len(st.session_state.general_news)
+    st.subheader("🌍 General News Results")
+    news = st.session_state.general_news
     idx = st.session_state.news_index
-    end_idx = min(idx + 10, total)
+    end_idx = min(idx + 10, len(news))
 
     for i in range(idx, end_idx):
-        article = st.session_state.general_news[i]
+        article = news[i]
         with st.expander(f"{i+1}. {article['title']} [{article['source']}]"):
             st.markdown(f"**URL:** [{article['url']}]({article['url']})")
             st.markdown(f"**Original:** {article['content'][:500]}...")
             st.markdown("**Summary:**")
             st.markdown(summarize(article['content']))
 
-    if end_idx < total:
+    if end_idx < len(news):
         if st.button("🔽 Show 10 More"):
             st.session_state.news_index += 10
