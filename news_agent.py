@@ -49,12 +49,13 @@ def get_rss_news():
     for name, url in RSS_FEEDS:
         feed = feedparser.parse(url)
         for entry in feed.entries[:5]:
+            published_dt = datetime(*entry.published_parsed[:6]) if hasattr(entry, "published_parsed") else datetime.min
             entries.append({
                 "source": name,
                 "title": entry.title,
                 "url": entry.link,
                 "content": getattr(entry, "summary", ""),
-                "published": getattr(entry, "published_parsed", None)
+                "published": published_dt
             })
     return sorted(entries, key=lambda x: x.get("published", datetime.min), reverse=True)
 
@@ -88,7 +89,6 @@ with col1:
 # Results tab
 with col1:
     if "results" in st.session_state and st.session_state.results:
-        st.markdown("---")
         st.subheader("📄 Results")
         news = st.session_state.results
         idx = st.session_state.news_index
