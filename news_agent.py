@@ -2,6 +2,7 @@ import streamlit as st
 from duckduckgo_search import DDGS
 import requests
 import feedparser
+from bs4 import BeautifulSoup
 from datetime import datetime
 import os
 from dotenv import load_dotenv
@@ -59,6 +60,19 @@ RSS_FEEDS = [
 
 AVAILABLE_SOURCES = ["DuckDuckGo", "BBC", "Reuters", "Al Jazeera"]
 
+def fetch_og_image(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, "html.parser")
+            og_image = soup.find("meta", property="og:image")
+            if og_image and og_image.get("content"):
+                return og_image["content"]
+    except:
+        pass
+    return "https://via.placeholder.com/400x200?text=No+Image"
+
 def get_duckduckgo_news(topic):
     try:
         with DDGS() as ddg:
@@ -68,7 +82,7 @@ def get_duckduckgo_news(topic):
                 "title": r["title"],
                 "url": r["href"],
                 "content": r["body"],
-                "image": None,
+                "image": fetch_og_image(r["href"]),
                 "published": datetime.now()
             } for r in results]
     except Exception as e:
@@ -81,12 +95,13 @@ def get_rss_news():
         feed = feedparser.parse(url)
         for entry in feed.entries[:5]:
             published_dt = datetime(*entry.published_parsed[:6]) if hasattr(entry, "published_parsed") else datetime.min
+            image = fetch_og_image(entry.link)
             entries.append({
                 "source": name,
                 "title": entry.title,
                 "url": entry.link,
                 "content": getattr(entry, "summary", ""),
-                "image": None,
+                "image": image,
                 "published": published_dt
             })
     return entries
@@ -105,7 +120,7 @@ def get_gnews_news(topic):
             "title": a["title"],
             "url": a["url"],
             "content": a.get("description") or a.get("content", ""),
-            "image": a.get("image"),
+            "image": a.get("image") or fetch_og_image(a["url"]),
             "published": datetime.fromisoformat(a.get("publishedAt").replace("Z", "+00:00")) if a.get("publishedAt") else datetime.min
         } for a in articles if a.get("title") and a.get("url")]
     except Exception as e:
@@ -155,8 +170,8 @@ with col1:
         for i in range(idx, end_idx):
             article = news[i]
             with st.expander(f"{i+1}. {article['title']} [{article['source']}]"):
-                if article.get("image"):
-                    st.image(article["image"], use_column_width=True)
+                image_url = article.get("image") or "https://via.placeholder.com/400x200?text=No+Image"
+                st.image(image_url, use_container_width=True)
                 st.markdown(f"**URL:** [{article['url']}]({article['url']})")
                 st.markdown(f"**Original:** {article['content'][:500]}...")
                 st.markdown("**Summary:**")
@@ -171,8 +186,8 @@ with col2:
     st.subheader("🟨 Featured (GNews)")
     if "featured_news" in st.session_state and st.session_state.featured_news:
         for art in st.session_state.featured_news:
-            if art.get("image"):
-                st.image(art["image"], use_column_width=True)
+            image_url = art.get("image") or "https://via.placeholder.com/400x200?text=No+Image"
+            st.image(image_url, use_container_width=True)
             st.markdown(f"**[{art['title']}]({art['url']})**\n\n*{art['source']}*", unsafe_allow_html=True)
     else:
         st.info("No featured articles yet.")
