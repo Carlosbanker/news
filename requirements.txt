@@ -3,3 +3,4 @@ duckduckgo-search
 requests
 python-dotenv
 feedparser
+beautifulsoup4
