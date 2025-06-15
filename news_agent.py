@@ -18,7 +18,19 @@ st.set_page_config(page_title="📰 News Lookup", page_icon="🗞️", layout="w
 st.title("🗞️ News Lookup")
 st.markdown("A multi-source AI-powered news summarizer with filtering and pagination.")
 
-# Search input and source filters
+# 🔧 Helper function: Extract image from article page
+def scrape_image_from_url(url):
+    try:
+        res = requests.get(url, timeout=3)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        og_img = soup.find("meta", property="og:image")
+        if og_img and og_img["content"]:
+            return og_img["content"]
+    except Exception:
+        pass
+    return "https://via.placeholder.com/400x200?text=No+Image"
+
+# Search input and filters
 topic = st.text_input("Enter a news topic:", "")
 available_sources = ["DuckDuckGo", "BBC", "Reuters", "Al Jazeera"]
 selected_sources = st.multiselect("Filter by source:", available_sources, default=available_sources)
@@ -27,9 +39,9 @@ if st.button("🔎 Look Up News") and topic:
     with st.spinner("Fetching news..."):
         all_news = []
         rate_limits = {}
-
-        # GNews Featured Section
         featured = []
+
+        # ▶ GNews Featured
         try:
             gnews_url = f"https://gnews.io/api/v4/search?q={topic}&lang=en&max=5&token={GNEWS_KEY}"
             gnews_data = requests.get(gnews_url).json()
@@ -38,23 +50,25 @@ if st.button("🔎 Look Up News") and topic:
         except Exception as e:
             rate_limits['GNews'] = f"⚠️ GNews failed: {e}"
 
-        # DuckDuckGo Search
+        # ▶ DuckDuckGo
         if "DuckDuckGo" in selected_sources:
             try:
                 with DDGS() as ddgs:
                     ddg_results = [r for r in ddgs.text(topic, max_results=50)]
                     for r in ddg_results:
+                        img = scrape_image_from_url(r.get("href"))
                         all_news.append({
                             "title": r.get("title"),
                             "link": r.get("href"),
                             "body": r.get("body"),
                             "source": "DuckDuckGo",
+                            "image": img,
                             "published": datetime.now(),
                         })
             except Exception as e:
                 rate_limits['DuckDuckGo'] = f"⚠️ DuckDuckGo failed: {e}"
 
-        # RSS Feeds
+        # ▶ RSS Feeds
         feeds = {
             "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
             "Reuters": "http://feeds.reuters.com/reuters/topNews",
@@ -66,29 +80,35 @@ if st.button("🔎 Look Up News") and topic:
                 try:
                     d = feedparser.parse(url)
                     for entry in d.entries[:50]:
+                        link = entry.link
+                        img = scrape_image_from_url(link)
                         all_news.append({
                             "title": entry.title,
-                            "link": entry.link,
+                            "link": link,
                             "body": entry.summary,
                             "source": name,
+                            "image": img,
                             "published": datetime(*entry.published_parsed[:6]) if hasattr(entry, 'published_parsed') else datetime.now(),
                         })
                 except Exception as e:
                     rate_limits[name] = f"⚠️ {name} failed: {e}"
 
-        # Sort by newest first
+        # Sort newest first
         all_news = sorted(all_news, key=lambda x: x.get("published", datetime.min), reverse=True)
 
-        # Display Results and Featured
+        # Layout: Main and Sidebar
         col1, col2 = st.columns([3, 1])
 
+        # ▶ Sidebar: Featured
         with col2:
             st.markdown("### 🟨 Featured (GNews)")
             for item in featured:
-                st.image(item.get("image", "https://via.placeholder.com/150"), use_container_width=True)
+                img_url = item.get("image") or "https://via.placeholder.com/400x200?text=No+Image"
+                st.image(img_url, use_container_width=True)
                 st.markdown(f"[{item.get('title')}]({item.get('url')})")
                 st.caption(item.get("source", {}).get("name", ""))
 
+        # ▶ Main: Results
         with col1:
             st.markdown("## 📰 Results")
             page_size = 10
@@ -96,12 +116,13 @@ if st.button("🔎 Look Up News") and topic:
             page = st.number_input("Page", 1, total_pages, 1, 1)
             start = (page - 1) * page_size
             end = start + page_size
+
             for item in all_news[start:end]:
                 st.markdown(f"**{item['title']}** [{item['source']}]({item['link']})")
-                st.image("https://via.placeholder.com/150", width=400)
+                st.image(item.get("image", "https://via.placeholder.com/400x200?text=No+Image"), width=400)
                 st.caption(item['body'])
 
-        # Settings Panel
+        # ▶ Settings Sidebar
         with st.sidebar:
             st.markdown("### ⚙️ Settings")
             st.markdown("Toggle News Sources and View Options")
