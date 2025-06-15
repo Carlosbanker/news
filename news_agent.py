@@ -14,8 +14,57 @@ GNEWS_KEY = os.getenv("GNEWS_KEY")
 
 # Setup Streamlit UI
 st.set_page_config(page_title="📰 News Lookup", page_icon="🗞️", layout="wide")
+
+# Apply Daily Maverick Inspired Styling
+st.markdown("""
+    <style>
+    html, body {
+        background-color: #f8f8f8;
+        color: #111;
+        font-family: 'Georgia', serif;
+    }
+    .st-emotion-cache-1v0mbdj, .st-emotion-cache-13k62yr {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .stImage > img {
+        border-radius: 5px;
+    }
+    .stButton > button {
+        background-color: #333;
+        color: white;
+        border: none;
+        padding: 0.5em 1em;
+        border-radius: 4px;
+    }
+    .stButton > button:hover {
+        background-color: #222;
+    }
+    .category-nav {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+    .category-button {
+        padding: 0.3em 0.6em;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        background-color: #eee;
+        font-size: 0.9rem;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("🗞️ News Lookup")
 st.markdown("A multi-source AI-powered news summarizer with filtering and pagination.")
+
+# Category Navigation
+categories = ["Politics", "Business", "Technology", "Health", "World", "Environment", "Science"]
+st.markdown('<div class="category-nav">' + ''.join([f'<div class="category-button">{cat}</div>' for cat in categories]) + '</div>', unsafe_allow_html=True)
 
 # Initialize API status tracker
 if "rate_limits" not in st.session_state:
@@ -24,10 +73,6 @@ if "rate_limits" not in st.session_state:
         "RSS": "✅ Available",
         "GNews": "✅ Available"
     }
-
-# Theme toggle
-theme = st.sidebar.radio("Select Theme", ["Light", "Dark"])
-st.markdown(f"<style>body {{ background-color: {'#111' if theme == 'Dark' else '#fff'}; color: {'#eee' if theme == 'Dark' else '#000'} }}</style>", unsafe_allow_html=True)
 
 # Source toggle
 st.sidebar.subheader("News Source Settings")
