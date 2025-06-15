@@ -73,18 +73,27 @@ def get_gnews_news(topic):
         st.warning(f"⚠️ GNews failed: {e}")
         return []
 
-# Input
+# Input and Search Logic
 with col1:
-    topic = st.text_input("Enter a news topic:", value="climate change")
-    selected_sources = st.multiselect("Filter by source:", AVAILABLE_SOURCES, default=AVAILABLE_SOURCES)
+    if "search_topic" not in st.session_state:
+        st.session_state.search_topic = "climate change"
     if "news_index" not in st.session_state:
         st.session_state.news_index = 0
-    if st.button("🔎 Look Up News"):
+
+    topic_input = st.text_input("Enter a news topic:", value=st.session_state.search_topic)
+    selected_sources = st.multiselect("Filter by source:", AVAILABLE_SOURCES, default=AVAILABLE_SOURCES)
+
+    if st.button("🔎 Look Up News") or topic_input != st.session_state.search_topic:
+        st.session_state.search_topic = topic_input
         st.session_state.news_index = 0
-        all_news = get_duckduckgo_news(topic) + get_rss_news()
+
+        ddg_news = get_duckduckgo_news(st.session_state.search_topic)
+        rss_news = get_rss_news()
+        all_news = ddg_news + rss_news
         all_news = sorted(all_news, key=lambda x: x.get("published", datetime.min), reverse=True)
+
         st.session_state.results = [n for n in all_news if n["source"] in selected_sources][:50]
-        st.session_state.featured_news = get_gnews_news(topic)
+        st.session_state.featured_news = get_gnews_news(st.session_state.search_topic)
 
 # Results tab
 with col1:
