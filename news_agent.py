@@ -53,20 +53,21 @@ def get_rss_news():
                 "source": name,
                 "title": entry.title,
                 "url": entry.link,
-                "content": getattr(entry, "summary", "")
+                "content": getattr(entry, "summary", ""),
+                "published": getattr(entry, "published_parsed", None)
             })
-    return entries
+    return sorted(entries, key=lambda x: x.get("published", datetime.min), reverse=True)
 
 def get_gnews_news(topic):
     if not GNEWS_KEY:
         return []
     url = "https://gnews.io/api/v4/search"
-    params = {"q": topic, "lang": "en", "max": 5, "token": GNEWS_KEY}
+    params = {"q": topic, "token": GNEWS_KEY, "sortby": "publishedAt"}
     try:
         res = requests.get(url, params=params)
         res.raise_for_status()
         articles = res.json().get("articles", [])
-        return [{"source": a["source"]["name"], "title": a["title"], "url": a["url"], "content": a.get("description") or a.get("content", "") } for a in articles if a.get("title") and a.get("url")]
+        return [{"source": a["source"]["name"], "title": a["title"], "url": a["url"], "content": a.get("description") or a.get("content", ""), "published": a.get("publishedAt") } for a in articles if a.get("title") and a.get("url")]
     except Exception as e:
         st.warning(f"⚠️ GNews failed: {e}")
         return []
@@ -79,9 +80,31 @@ with col1:
         st.session_state.news_index = 0
     if st.button("🔎 Look Up News"):
         st.session_state.news_index = 0
-        general_news = get_duckduckgo_news(topic) + get_rss_news()
-        st.session_state.general_news = [n for n in general_news if n["source"] in selected_sources][:50]
+        all_news = get_duckduckgo_news(topic) + get_rss_news()
+        all_news = sorted(all_news, key=lambda x: x.get("published", datetime.min), reverse=True)
+        st.session_state.results = [n for n in all_news if n["source"] in selected_sources][:50]
         st.session_state.featured_news = get_gnews_news(topic)
+
+# Results tab
+with col1:
+    if "results" in st.session_state and st.session_state.results:
+        st.markdown("---")
+        st.subheader("📄 Results")
+        news = st.session_state.results
+        idx = st.session_state.news_index
+        end_idx = min(idx + 10, len(news))
+
+        for i in range(idx, end_idx):
+            article = news[i]
+            with st.expander(f"{i+1}. {article['title']} [{article['source']}]"):
+                st.markdown(f"**URL:** [{article['url']}]({article['url']})")
+                st.markdown(f"**Original:** {article['content'][:500]}...")
+                st.markdown("**Summary:**")
+                st.markdown(summarize(article['content']))
+
+        if end_idx < len(news):
+            if st.button("🔽 Show 10 More"):
+                st.session_state.news_index += 10
 
 # Right sidebar - Featured / Related
 with col2:
@@ -91,23 +114,3 @@ with col2:
             st.markdown(f"**[{art['title']}]({art['url']})**\n\n*{art['source']}*", unsafe_allow_html=True)
     else:
         st.info("No featured articles yet.")
-
-# Display paginated general news
-if "general_news" in st.session_state and st.session_state.general_news:
-    st.markdown("---")
-    st.subheader("🌍 General News Results")
-    news = st.session_state.general_news
-    idx = st.session_state.news_index
-    end_idx = min(idx + 10, len(news))
-
-    for i in range(idx, end_idx):
-        article = news[i]
-        with st.expander(f"{i+1}. {article['title']} [{article['source']}]"):
-            st.markdown(f"**URL:** [{article['url']}]({article['url']})")
-            st.markdown(f"**Original:** {article['content'][:500]}...")
-            st.markdown("**Summary:**")
-            st.markdown(summarize(article['content']))
-
-    if end_idx < len(news):
-        if st.button("🔽 Show 10 More"):
-            st.session_state.news_index += 10
