@@ -16,8 +16,28 @@ st.set_page_config(page_title="📰 News Lookup", page_icon="🗞️", layout="w
 st.title("🗞️ News Lookup")
 st.markdown("A multi-source AI-powered news summarizer with filtering and pagination.")
 
-# Setup columns
-col1, col2 = st.columns([3, 1])
+# Initialize API status tracker
+if "rate_limits" not in st.session_state:
+    st.session_state.rate_limits = {
+        "DuckDuckGo": "✅ Available",
+        "RSS": "✅ Available",
+        "GNews": "✅ Available"
+    }
+
+# Theme toggle
+theme = st.sidebar.radio("Select Theme", ["Light", "Dark"])
+st.markdown(f"<style>body {{ background-color: {'#111' if theme == 'Dark' else '#fff'}; color: {'#eee' if theme == 'Dark' else '#000'} }}</style>", unsafe_allow_html=True)
+
+# Source toggle
+st.sidebar.subheader("News Source Settings")
+use_ddg = st.sidebar.checkbox("Enable DuckDuckGo", value=True)
+use_rss = st.sidebar.checkbox("Enable RSS Feeds", value=True)
+use_gnews = st.sidebar.checkbox("Enable GNews (Featured)", value=True)
+
+# API Status Info
+with st.sidebar.expander("⚙️ API Rate Limit Status"):
+    for key, status in st.session_state.rate_limits.items():
+        st.write(f"{key}: {status}")
 
 # Summarizer
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
@@ -40,9 +60,19 @@ RSS_FEEDS = [
 AVAILABLE_SOURCES = ["DuckDuckGo", "BBC", "Reuters", "Al Jazeera"]
 
 def get_duckduckgo_news(topic):
-    with DDGS() as ddg:
-        results = ddg.text(f"{topic} news", max_results=20)
-        return [{"source": "DuckDuckGo", "title": r["title"], "url": r["href"], "content": r["body"]} for r in results]
+    try:
+        with DDGS() as ddg:
+            results = ddg.text(f"{topic} news", max_results=20)
+            return [{
+                "source": "DuckDuckGo",
+                "title": r["title"],
+                "url": r["href"],
+                "content": r["body"],
+                "published": datetime.now()
+            } for r in results]
+    except Exception as e:
+        st.session_state.rate_limits["DuckDuckGo"] = f"⚠️ {e}"
+        return []
 
 def get_rss_news():
     entries = []
@@ -57,7 +87,7 @@ def get_rss_news():
                 "content": getattr(entry, "summary", ""),
                 "published": published_dt
             })
-    return sorted(entries, key=lambda x: x.get("published", datetime.min), reverse=True)
+    return entries
 
 def get_gnews_news(topic):
     if not GNEWS_KEY:
@@ -68,10 +98,19 @@ def get_gnews_news(topic):
         res = requests.get(url, params=params)
         res.raise_for_status()
         articles = res.json().get("articles", [])
-        return [{"source": a["source"]["name"], "title": a["title"], "url": a["url"], "content": a.get("description") or a.get("content", ""), "published": a.get("publishedAt") } for a in articles if a.get("title") and a.get("url")]
+        return [{
+            "source": a["source"]["name"],
+            "title": a["title"],
+            "url": a["url"],
+            "content": a.get("description") or a.get("content", ""),
+            "published": datetime.fromisoformat(a.get("publishedAt").replace("Z", "+00:00")) if a.get("publishedAt") else datetime.min
+        } for a in articles if a.get("title") and a.get("url")]
     except Exception as e:
-        st.warning(f"⚠️ GNews failed: {e}")
+        st.session_state.rate_limits["GNews"] = f"⚠️ {e}"
         return []
+
+# Setup columns
+col1, col2 = st.columns([3, 1])
 
 # Input and Search Logic
 with col1:
@@ -87,13 +126,20 @@ with col1:
         st.session_state.search_topic = topic_input
         st.session_state.news_index = 0
 
-        ddg_news = get_duckduckgo_news(st.session_state.search_topic)
-        rss_news = get_rss_news()
-        all_news = ddg_news + rss_news
-        all_news = sorted(all_news, key=lambda x: x.get("published", datetime.min), reverse=True)
+        all_news = []
+        if use_gnews:
+            st.session_state.featured_news = get_gnews_news(topic_input)
+        else:
+            st.session_state.featured_news = []
 
-        st.session_state.results = [n for n in all_news if n["source"] in selected_sources][:50]
-        st.session_state.featured_news = get_gnews_news(st.session_state.search_topic)
+        if use_ddg:
+            all_news += get_duckduckgo_news(topic_input)
+        if use_rss:
+            all_news += get_rss_news()
+
+        all_news = sorted([n for n in all_news if n["source"] in selected_sources], key=lambda x: x.get("published", datetime.min), reverse=True)
+
+        st.session_state.results = all_news[:50]
 
 # Results tab
 with col1:
