@@ -6,17 +6,17 @@ from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
 
-# Load keys
+# Load API keys from .env
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
+GNEWS_KEY = os.getenv("GNEWS_KEY")
 
-# Set Streamlit config
+# Setup Streamlit UI
 st.set_page_config(page_title="📰 News Lookup", page_icon="🗞️")
 st.title("🗞️ News Lookup")
 st.markdown("A free, multi-source AI-powered news summarizer. Get concise overviews from different reputable sources.")
 
-# HuggingFace summarizer
+# HuggingFace Summarizer
 headers = {"Authorization": f"Bearer {HF_TOKEN}"}
 HF_API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
 
@@ -27,10 +27,10 @@ def summarize(text):
         return res.json()[0]['summary_text']
     return f"❌ Error: {res.status_code}"
 
-# DuckDuckGo Search
+# DuckDuckGo News
 def get_duckduckgo_news(topic):
     with DDGS() as ddg:
-        results = ddg.text(f"{topic} news article", max_results=5)
+        results = ddg.text(f"{topic} news", max_results=5)
         return [
             {
                 "source": "DuckDuckGo",
@@ -51,7 +51,7 @@ def get_rss_news():
     entries = []
     for name, url in RSS_FEEDS:
         feed = feedparser.parse(url)
-        for entry in feed.entries[:2]:
+        for entry in feed.entries[:2]:  # limit per feed
             entries.append({
                 "source": name,
                 "title": entry.title,
@@ -60,20 +60,17 @@ def get_rss_news():
             })
     return entries
 
-# NewsAPI (Featured section)
-def get_newsapi_news(topic):
-    if not NEWSAPI_KEY:
+# GNews (Featured Section)
+def get_gnews_news(topic):
+    if not GNEWS_KEY:
         return []
 
-    url = "https://newsapi.org/v2/everything"
-    from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    url = "https://gnews.io/api/v4/search"
     params = {
         "q": topic,
-        "language": "en",
-        "sortBy": "relevancy",
-        "pageSize": 5,
-        "from": from_date,
-        "apiKey": NEWSAPI_KEY
+        "lang": "en",
+        "max": 5,
+        "token": GNEWS_KEY
     }
 
     try:
@@ -82,49 +79,48 @@ def get_newsapi_news(topic):
         articles = res.json().get("articles", [])
         return [
             {
-                "source": "NewsAPI",
+                "source": a["source"]["name"],
                 "title": a["title"],
                 "url": a["url"],
                 "content": a.get("description") or a.get("content", "No description available.")
-            } for a in articles if a.get("description") or a.get("content")
+            } for a in articles if a.get("title") and a.get("url")
         ]
     except Exception as e:
-        st.warning(f"⚠️ NewsAPI failed: {e}")
+        st.warning(f"⚠️ GNews failed: {e}")
         return []
 
-# Input box
+# Topic Input
 topic = st.text_input("Enter a news topic:", value="climate change")
 
-# Session state
+# Session states
 if "news_index" not in st.session_state:
     st.session_state.news_index = 0
 if "general_news" not in st.session_state:
     st.session_state.general_news = []
-if "newsapi_news" not in st.session_state:
-    st.session_state.newsapi_news = []
+if "featured_news" not in st.session_state:
+    st.session_state.featured_news = []
 
-# Button to search
+# Search Button
 if st.button("🔎 Look Up News"):
     if topic.strip():
-        with st.status("Fetching news from all sources...", expanded=True):
-            # Clear old state
+        with st.status("Gathering and summarizing news...", expanded=True):
             st.session_state.news_index = 0
             st.session_state.general_news = get_duckduckgo_news(topic) + get_rss_news()
-            st.session_state.newsapi_news = get_newsapi_news(topic)
+            st.session_state.featured_news = get_gnews_news(topic)
     else:
         st.warning("Please enter a topic to search.")
 
-# Render Featured NewsAPI Section
-if st.session_state.newsapi_news:
-    st.subheader("🟨 Featured (NewsAPI)")
-    for i, article in enumerate(st.session_state.newsapi_news):
+# Display Featured Section (GNews)
+if st.session_state.featured_news:
+    st.subheader("🟨 Featured (GNews)")
+    for i, article in enumerate(st.session_state.featured_news):
         with st.expander(f"{i+1}. {article['title']} [{article['source']}]"):
             st.markdown(f"**URL:** [{article['url']}]({article['url']})")
             st.markdown(f"**Original:** {article['content'][:500]}...")
             st.markdown("**Summary:**")
             st.markdown(summarize(article['content']))
 
-# Render General News Section with Pagination
+# Display General News with Pagination
 if st.session_state.general_news:
     st.markdown("---")
     st.subheader("🌍 General News")
